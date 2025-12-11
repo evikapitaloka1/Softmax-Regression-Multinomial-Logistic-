@@ -1,53 +1,102 @@
+# proses_keempat.py
 import pandas as pd
 from sklearn.preprocessing import MinMaxScaler
-from sklearn.feature_selection import SelectKBest, chi2
+from sklearn.model_selection import train_test_split
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import (
+    accuracy_score, precision_score, recall_score, roc_auc_score,
+    confusion_matrix, ConfusionMatrixDisplay, RocCurveDisplay
+)
+from imblearn.over_sampling import SMOTE
+import matplotlib.pyplot as plt
+import time
 
 def proses_keempat():
-    # Load Dataset
-    try:
-        df = pd.read_csv('heart.csv')
-    except FileNotFoundError:
-        print("File heart.csv tidak ditemukan.")
-        return
+    # ===== Load Dataset =====
+    df = pd.read_csv("heart.csv")
 
-    # --- 1. Cek Missing Value ---
+    # ===== 1. Cek Missing Value =====
     print("=== 1. Cek Missing Value ===")
     missing = df.isnull().sum()
     print(missing)
-    if missing.sum() == 0:
-        print("\n[INFO] Tidak ada missing value dalam dataset.")
-    else:
-        print("\n[INFO] Terdapat missing value.")
 
-    # Persiapan Data (Pisahkan Fitur X dan Target y)
-    X = df.drop('target', axis=1)
+    # Pisahkan fitur dan target
+    X = df.drop(columns=['target'])
     y = df['target']
 
-    # --- 2. Transformasi --> MinMaxScaler ---
-    print("\n=== 2. Transformasi (MinMaxScaler) ===")
+    # ===== 2. Transformasi MinMaxScaler =====
+    print("\n=== 2. Transformasi: MinMaxScaler ===")
     scaler = MinMaxScaler()
-    # Fit dan transform fitur
     X_scaled = scaler.fit_transform(X)
-    # Ubah kembali ke DataFrame agar nama kolom tetap ada
-    X_scaled_df = pd.DataFrame(X_scaled, columns=X.columns)
-    
-    print("Data setelah normalisasi (5 baris pertama):")
-    print(X_scaled_df.head())
 
-    # --- 4. Metode Spesifikasi Sebanyak 3 (Seleksi Fitur) ---
-    # Interpretasi: Memilih 3 fitur terbaik (SelectKBest dengan k=3)
-    print("\n=== 4. Metode Spesifikasi Sebanyak 3 (SelectKBest k=3) ===")
-    # Menggunakan Chi-Square (chi2) karena data sudah non-negatif (MinMax)
-    selector = SelectKBest(score_func=chi2, k=3)
-    X_selected = selector.fit_transform(X_scaled_df, y)
-    
-    # Mendapatkan nama kolom yang terpilih
-    selected_features = X.columns[selector.get_support()]
-    
-    print(f"3 Fitur Terpilih: {selected_features.tolist()}")
-    print("\nData dengan 3 fitur spesifik (5 baris pertama):")
-    X_final = pd.DataFrame(X_selected, columns=selected_features)
-    print(X_final.head())
+    # ===== 3. Imbalanced Data: SMOTE =====
+    print("\n=== 3. Imbalanced Data: SMOTE ===")
+    sm = SMOTE()
+    X_resampled, y_resampled = sm.fit_resample(X_scaled, y)
+
+    print(f"Jumlah sebelum SMOTE : {len(y)}")
+    print(f"Jumlah sesudah SMOTE : {len(y_resampled)}")
+
+    # ===== Simpan Grafik Distribusi SMOTE =====
+    plt.figure()
+    before = y.value_counts()
+    after = y_resampled.value_counts()
+    plt.bar(["Class 0 (Before)", "Class 1 (Before)", 
+             "Class 0 (After)", "Class 1 (After)"],
+            [before[0], before[1], after[0], after[1]])
+    plt.title("Distribusi Data Sebelum & Sesudah SMOTE")
+    plt.savefig("smote_distribution_proses4.png")
+    plt.close()
+
+    # ===== Split Data =====
+    X_train, X_test, y_train, y_test = train_test_split(
+        X_resampled, y_resampled, test_size=0.2, random_state=42
+    )
+
+    # ===== 4. Metode Klasifikasi =====
+    print("\n=== 4. Training Model (Softmax Regression) ===")
+    model = LogisticRegression(multi_class='multinomial', solver='lbfgs', max_iter=1000)
+
+    # Waktu training
+    start_train = time.time()
+    model.fit(X_train, y_train)
+    end_train = time.time()
+
+    # Waktu testing
+    start_test = time.time()
+    y_pred = model.predict(X_test)
+    end_test = time.time()
+
+    # ===== 5. Evaluasi =====
+    print("\n=== Evaluasi Softmax Regression (Proses Keempat) ===")
+    print(f"Akurasi        : {accuracy_score(y_test, y_pred):.4f}")
+    print(f"Presisi (Macro): {precision_score(y_test, y_pred, average='macro'):.4f}")
+    print(f"Recall (Macro) : {recall_score(y_test, y_pred, average='macro'):.4f}")
+    print(f"Waktu Training : {end_train - start_train:.6f} detik")
+    print(f"Waktu Testing  : {end_test - start_test:.6f} detik")
+
+    # ===== AUC Score + Simpan ROC Curve =====
+    try:
+        y_proba = model.predict_proba(X_test)
+        auc_score = roc_auc_score(y_test, y_proba[:, 1])
+        print(f"AUC            : {auc_score:.4f}")
+
+        RocCurveDisplay.from_estimator(model, X_test, y_test)
+        plt.title("ROC Curve - Proses Keempat")
+        plt.savefig("roc_proses4.png")
+        plt.close()
+
+    except:
+        print("AUC tidak dapat dihitung.")
+
+    # ===== Confusion Matrix =====
+    cm = confusion_matrix(y_test, y_pred)
+    disp = ConfusionMatrixDisplay(confusion_matrix=cm)
+    disp.plot()
+    plt.title("Confusion Matrix - Proses Keempat")
+    plt.savefig("confusion_matrix_proses4.png")
+    plt.close()
+
 
 if __name__ == "__main__":
     proses_keempat()
